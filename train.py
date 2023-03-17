@@ -4,7 +4,7 @@ from trainer import IndexingTrainer
 import numpy as np
 import torch
 import wandb
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from tqdm import tqdm
 
 
@@ -72,27 +72,38 @@ def main():
 
     # We use wandb to log Hits scores after each epoch. Note, this script does not save model checkpoints.
     wandb.login()
-    wandb.init(project="DSI", name='NQ-10k-t5-large')
+    wandb.init(project="DSI", name='NQ-320k-t5-large')
 
     tokenizer = T5Tokenizer.from_pretrained(model_name, cache_dir='cache')
     model = T5ForConditionalGeneration.from_pretrained(model_name, cache_dir='cache')
 
-    train_dataset = IndexingTrainDataset(path_to_data='data/NQ/NQ_10k_multi_task_train.json',
+    path = '/home/vk352/dsi/data/NQ320k/old_docs'
+
+    train_queries = IndexingTrainDataset(path_to_data=path,
+                                         datafile='trainqueries.json',
                                          max_length=L,
                                          cache_dir='cache',
-                                         tokenizer=tokenizer)
+                                         tokenizer=tokenizer,
+                                         isgen=False)
+    gen_queries = IndexingTrainDataset(path_to_data=path,
+                                        datafile='passages_seen.json',
+                                         max_length=L,
+                                         cache_dir='cache',
+                                         tokenizer=tokenizer,
+                                         isgen=True)
+    train_dataset = ConcatDataset([train_queries, gen_queries])
+
     
     # This eval set is really not the 'eval' set but used to report if the model can memorise (index) all training data points.
-    eval_dataset = IndexingTrainDataset(path_to_data='data/NQ/NQ_10k_multi_task_train.json',
-                                        max_length=L,
-                                        cache_dir='cache',
-                                        tokenizer=tokenizer)
+    # eval_dataset = train_dataset
     
     # This is the actual eval set.
-    test_dataset = IndexingTrainDataset(path_to_data='data/NQ/NQ_10k_valid.json',
+    test_dataset = IndexingTrainDataset(path_to_data=path,
+                                        datafile='valqueries.json',
                                         max_length=L,
                                         cache_dir='cache',
-                                        tokenizer=tokenizer)
+                                        tokenizer=tokenizer,
+                                        isgen=False)
 
     ################################################################
     # docid generation constrain, we only generate integer docids.
@@ -136,7 +147,7 @@ def main():
         tokenizer=tokenizer,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=test_dataset,
         data_collator=IndexingCollator(
             tokenizer,
             padding='longest',

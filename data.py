@@ -4,18 +4,23 @@ import datasets
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer, DataCollatorWithPadding
 
+import joblib
+import os
 
+# dataset class for generated queries and trainqueries
 class IndexingTrainDataset(Dataset):
     def __init__(
             self,
             path_to_data,
+            datafile,
             max_length: int,
             cache_dir: str,
             tokenizer: PreTrainedTokenizer,
+            isgen: bool
     ):
         self.train_data = datasets.load_dataset(
             'json',
-            data_files=path_to_data,
+            data_files=os.path.join(path_to_data, datafile),
             ignore_verifications=False,
             cache_dir=cache_dir
         )['train']
@@ -23,6 +28,8 @@ class IndexingTrainDataset(Dataset):
         self.max_length = max_length
         self.tokenizer = tokenizer
         self.total_len = len(self.train_data)
+        self.doc_class = joblib.load(os.path.join(path_to_data, 'doc_class.pkl'))
+        self.isgenerated = isgen
 
 
     def __len__(self):
@@ -30,12 +37,17 @@ class IndexingTrainDataset(Dataset):
 
     def __getitem__(self, item):
         data = self.train_data[item]
-
-        input_ids = self.tokenizer(data['text'],
+        if self.isgenerated:
+            input_ids = self.tokenizer(data['gen_question'],
                                    return_tensors="pt",
                                    truncation='only_first',
                                    max_length=self.max_length).input_ids[0]
-        return input_ids, str(data['text_id'])
+        else:
+            input_ids = self.tokenizer(data['question'],
+                                   return_tensors="pt",
+                                   truncation='only_first',
+                                   max_length=self.max_length).input_ids[0]
+        return input_ids, str(self.doc_class[data['doc_id']])
 
 
 @dataclass
